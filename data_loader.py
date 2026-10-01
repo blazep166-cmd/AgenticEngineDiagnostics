@@ -21,18 +21,22 @@ OBD_COLUMNS = [
 
 def load_engine_data(file_path):
 
-    data = pd.read_csv(file_path)
-
-    missing_columns = [
-        column
-        for column in ENGINE_COLUMNS
-        if column not in data.columns
+    column_names = [
+        "Engine rpm",
+        "Lub oil pressure",
+        "Fuel pressure",
+        "Coolant pressure",
+        "lub oil temp",
+        "Coolant temp",
+        "Engine Condition"
     ]
 
-    if missing_columns:
-        raise ValueError(
-            f"Engine dataset is missing columns: {missing_columns}"
-        )
+    data = pd.read_csv(
+        file_path,
+        sep=r"\s+",
+        skiprows=1,
+        names=column_names
+    )
 
     if data.empty:
         raise ValueError("Engine dataset is empty.")
