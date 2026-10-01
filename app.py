@@ -9,7 +9,8 @@ from data_loader import (
 from agent import DiagnosticAgent
 
 from diagnostic_knowledge import (
-    detect_symptoms
+    detect_symptoms,
+    get_context_question
 )
 
 
@@ -83,27 +84,55 @@ detected_preview = detect_symptoms(
 
 
 # ==========================================================
-# CONTEXT QUESTIONS
+# DYNAMIC SYMPTOM CONTEXT
 # ==========================================================
 
-smoke_location = None
+context = {}
 
+if detected_preview:
 
-if "white smoke" in detected_preview:
-
-    st.info(
-        "White smoke was detected in the reported symptoms."
+    st.success(
+        "Symptom identified: "
+        + ", ".join(
+            symptom.title()
+            for symptom in detected_preview
+        )
     )
 
-    smoke_location = st.radio(
-        "Where is the white smoke coming from?",
-        [
-            "Unknown",
-            "Exhaust",
-            "Engine Bay"
-        ],
-        horizontal=True
-    )
+    context_questions_found = False
+
+    for symptom in detected_preview:
+
+        question_data = get_context_question(
+            symptom
+        )
+
+        if question_data:
+
+            if not context_questions_found:
+
+                st.subheader(
+                    "Additional Diagnostic Context"
+                )
+
+                st.caption(
+                    "The agent identified a symptom that "
+                    "requires additional information before "
+                    "the investigation can be narrowed."
+                )
+
+                context_questions_found = True
+
+            answer = st.radio(
+                question_data["question"],
+                question_data["options"],
+                key=f"context_{symptom}",
+                horizontal=True
+            )
+
+            if answer != "Unknown":
+
+                context[symptom] = answer
 
 
 # ==========================================================
@@ -280,8 +309,6 @@ if start:
 
     agent = DiagnosticAgent(
 
-        # General is only the fallback.
-        # Recognized symptoms can change the goal.
         goal="general_engine_condition",
 
         reference_data=sensor_data,
@@ -298,11 +325,7 @@ if start:
 
         symptoms=symptoms,
 
-        smoke_location=(
-            smoke_location
-            if smoke_location != "Unknown"
-            else None
-        )
+        context=context
     )
 
 
@@ -385,21 +408,6 @@ if start:
 
         st.write(
             "**General engine investigation selected**"
-        )
-
-
-    # ======================================================
-    # NEED FOR CONTEXT
-    # ======================================================
-
-    if assessment[
-        "needs_context"
-    ]:
-
-        st.warning(
-            assessment[
-                "context_question"
-            ]
         )
 
 
