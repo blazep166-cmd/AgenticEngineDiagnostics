@@ -165,6 +165,12 @@ st.caption(
 )
 
 
+st.write(
+    "Enter only the measurements currently available. You do not need to "
+    "fill in every field—the agent can identify additional evidence that "
+    "may help narrow the investigation."
+)
+
 col1, col2 = st.columns(2)
 
 
@@ -242,7 +248,7 @@ st.divider()
 
 
 start = st.button(
-    "Start Investigation",
+    "Start Diagnostic Investigation",
     type="primary",
     use_container_width=True
 )
