@@ -8,6 +8,10 @@ from data_loader import (
 
 from agent import DiagnosticAgent
 
+from diagnostic_knowledge import (
+    detect_symptoms
+)
+
 
 st.set_page_config(
     page_title="Engine Diagnostic Agent",
@@ -15,6 +19,10 @@ st.set_page_config(
     layout="wide"
 )
 
+
+# ==========================================================
+# LOAD REFERENCE DATA
+# ==========================================================
 
 @st.cache_data
 def load_project_data():
@@ -37,43 +45,65 @@ def load_project_data():
 engine_data, obd_data, sensor_data = load_project_data()
 
 
+# ==========================================================
+# PAGE HEADER
+# ==========================================================
+
 st.title("🔧 Engine Diagnostic Agent")
 
 st.write(
-    "Enter available information from the engine. "
-    "The diagnostic agent will investigate the case "
-    "using the engine dataset and OBD-II dataset as "
-    "reference information."
+    "Describe the engine problem and provide any available "
+    "measurements. The agent will determine a diagnostic "
+    "direction, investigate available evidence, and identify "
+    "additional information that may be needed."
 )
 
 st.divider()
 
 
 # ==========================================================
-# DIAGNOSTIC GOAL
+# REPORTED PROBLEM
 # ==========================================================
 
-st.subheader("1. Diagnostic Goal")
-
-
-goal_option = st.selectbox(
-    "What would you like to investigate?",
-    [
-        "Cooling System Investigation",
-        "Lubrication System Investigation",
-        "Fuel System Investigation",
-        "General Engine Investigation"
-    ]
-)
+st.subheader("1. Describe the Engine Problem")
 
 
 symptoms = st.text_area(
-    "Describe the problem or symptoms",
+    "What is happening with the engine?",
     placeholder=(
-        "Example: The engine is overheating after "
-        "driving for approximately 20 minutes."
+        "Example: My engine is overheating and "
+        "I'm seeing white smoke."
     )
 )
+
+
+detected_preview = detect_symptoms(
+    symptoms
+)
+
+
+# ==========================================================
+# CONTEXT QUESTIONS
+# ==========================================================
+
+smoke_location = None
+
+
+if "white smoke" in detected_preview:
+
+    st.info(
+        "White smoke was detected in the reported symptoms."
+    )
+
+    smoke_location = st.radio(
+        "Where is the white smoke coming from?",
+        [
+            "Unknown",
+            "Exhaust",
+            "Engine Bay"
+        ],
+        horizontal=True
+    )
 
 
 # ==========================================================
@@ -85,8 +115,8 @@ st.divider()
 st.subheader("2. Available Engine Information")
 
 st.caption(
-    "Enter only the measurements you currently have. "
-    "Leave unknown measurements blank."
+    "Enter only measurements you actually have. "
+    "Unknown measurements can be left blank."
 )
 
 
@@ -97,17 +127,17 @@ with col1:
 
     rpm_input = st.text_input(
         "Engine RPM",
-        placeholder="Example: 850"
+        placeholder="Example: 900"
     )
 
     coolant_temp_input = st.text_input(
         "Coolant Temperature",
-        placeholder="Example: 112"
+        placeholder="Example: 120"
     )
 
     coolant_pressure_input = st.text_input(
         "Coolant Pressure",
-        placeholder="Enter value if available"
+        placeholder="Example: 1.0"
     )
 
 
@@ -130,13 +160,13 @@ with col2:
 
 
 obd_code = st.text_input(
-    "OBD-II Trouble Code (Optional)",
+    "OBD-II Trouble Code",
     placeholder="Example: P0217"
 )
 
 
 # ==========================================================
-# CONVERT INPUT
+# INPUT CONVERSION
 # ==========================================================
 
 def convert_value(value):
@@ -145,9 +175,11 @@ def convert_value(value):
         return None
 
     try:
+
         return float(value)
 
     except ValueError:
+
         return "invalid"
 
 
@@ -167,7 +199,13 @@ start = st.button(
 
 if start:
 
-    rpm = convert_value(rpm_input)
+    # ------------------------------------------------------
+    # CONVERT ENGINE MEASUREMENTS
+    # ------------------------------------------------------
+
+    rpm = convert_value(
+        rpm_input
+    )
 
     coolant_temperature = convert_value(
         coolant_temp_input
@@ -190,7 +228,7 @@ if start:
     )
 
 
-    values = [
+    entered_values = [
         rpm,
         coolant_temperature,
         coolant_pressure,
@@ -200,7 +238,7 @@ if start:
     ]
 
 
-    if "invalid" in values:
+    if "invalid" in entered_values:
 
         st.error(
             "One or more engine measurements are not "
@@ -210,50 +248,59 @@ if start:
         st.stop()
 
 
+    # ------------------------------------------------------
+    # BUILD CASE
+    # ------------------------------------------------------
+
     case_data = {
-        "rpm": rpm,
+
+        "rpm":
+            rpm,
+
         "coolant_temperature":
             coolant_temperature,
+
         "coolant_pressure":
             coolant_pressure,
+
         "oil_pressure":
             oil_pressure,
+
         "oil_temperature":
             oil_temperature,
+
         "fuel_pressure":
             fuel_pressure
     }
 
 
-    goal_mapping = {
-
-        "Cooling System Investigation":
-            "cooling_condition",
-
-        "Lubrication System Investigation":
-            "lubrication_condition",
-
-        "Fuel System Investigation":
-            "fuel_condition",
-
-        "General Engine Investigation":
-            "general_engine_condition"
-    }
-
-
-    selected_goal = goal_mapping[
-        goal_option
-    ]
-
+    # ------------------------------------------------------
+    # CREATE AGENT
+    # ------------------------------------------------------
 
     agent = DiagnosticAgent(
-        goal=selected_goal,
+
+        # General is only the fallback.
+        # Recognized symptoms can change the goal.
+        goal="general_engine_condition",
+
         reference_data=sensor_data,
+
         case_data=case_data,
+
         obd_data=obd_data,
+
         obd_code=(
             obd_code.strip()
             if obd_code.strip()
+            else None
+        ),
+
+        symptoms=symptoms,
+
+        smoke_location=(
+            smoke_location
+            if smoke_location != "Unknown"
             else None
         )
     )
@@ -261,25 +308,98 @@ if start:
 
     result = agent.investigate()
 
+    assessment = result[
+        "assessment"
+    ]
+
 
     # ======================================================
-    # CASE INFORMATION
+    # INVESTIGATION OVERVIEW
     # ======================================================
 
-    st.header("Diagnostic Investigation")
-
-
-    st.subheader("Case")
-
-    st.write(
-        f"**Diagnostic Goal:** {goal_option}"
+    st.header(
+        "Diagnostic Investigation"
     )
 
 
     if symptoms.strip():
 
         st.write(
-            f"**Reported Symptoms:** {symptoms}"
+            f"**Reported Problem:** {symptoms}"
+        )
+
+
+    detected = assessment[
+        "detected_symptoms"
+    ]
+
+
+    if detected:
+
+        st.subheader(
+            "Symptoms Identified by Agent"
+        )
+
+        for symptom in detected:
+
+            st.write(
+                f"• {symptom.title()}"
+            )
+
+    else:
+
+        st.warning(
+            "The current prototype did not recognize "
+            "a supported symptom from the description."
+        )
+
+
+    # ======================================================
+    # DIAGNOSTIC DIRECTION
+    # ======================================================
+
+    st.subheader(
+        "Diagnostic Direction"
+    )
+
+
+    if result["goal"] == "cooling_condition":
+
+        st.write(
+            "**Cooling system investigation selected**"
+        )
+
+    elif result["goal"] == "lubrication_condition":
+
+        st.write(
+            "**Lubrication system investigation selected**"
+        )
+
+    elif result["goal"] == "fuel_condition":
+
+        st.write(
+            "**Fuel system investigation selected**"
+        )
+
+    else:
+
+        st.write(
+            "**General engine investigation selected**"
+        )
+
+
+    # ======================================================
+    # NEED FOR CONTEXT
+    # ======================================================
+
+    if assessment[
+        "needs_context"
+    ]:
+
+        st.warning(
+            assessment[
+                "context_question"
+            ]
         )
 
 
@@ -287,36 +407,52 @@ if start:
     # AGENT ACTIVITY
     # ======================================================
 
-    st.subheader("Agent Activity")
+    st.divider()
+
+    st.subheader(
+        "Agent Investigation"
+    )
 
 
     if not result["observations"]:
 
         st.warning(
-            "No engine measurements or OBD-II code "
-            "were available for the agent to investigate."
+            "No engine measurements or OBD-II evidence "
+            "were available for analysis."
         )
 
 
-    for number, observation in enumerate(
-        result["observations"],
-        start=1
-    ):
+    step_number = 1
 
-        if observation["tool"] == "OBD-II Code Lookup":
+
+    for observation in result[
+        "observations"
+    ]:
+
+        # --------------------------------------------------
+        # OBD-II RESULT
+        # --------------------------------------------------
+
+        if (
+            observation.get("tool")
+            == "OBD-II Code Lookup"
+        ):
 
             with st.expander(
-                f"Step {number}: OBD-II Code Lookup",
+                f"Step {step_number}: "
+                f"OBD-II Code Lookup",
                 expanded=True
             ):
 
                 st.write(
-                    f"**Code investigated:** "
+                    f"**Code:** "
                     f"{observation['code']}"
                 )
 
 
-                if observation["found"]:
+                if observation[
+                    "found"
+                ]:
 
                     st.write(
                         f"**System:** "
@@ -331,30 +467,38 @@ if start:
                 else:
 
                     st.warning(
-                        "The code was not found in the "
-                        "available OBD-II reference data."
+                        "The entered code was not found "
+                        "in the available OBD-II dataset."
                     )
+
+
+            step_number += 1
 
             continue
 
 
+        # --------------------------------------------------
+        # SENSOR RESULT
+        # --------------------------------------------------
+
         with st.expander(
-            f"Step {number}: {observation['tool']}",
+            f"Step {step_number}: "
+            f"{observation['tool']}",
             expanded=True
         ):
 
             st.write(
-                f"**Actual Engine Reading:** "
+                f"**Measurement:** "
                 f"{observation['actual_value']}"
             )
 
             st.write(
-                f"**Reference Assessment:** "
+                f"**Assessment:** "
                 f"{observation['status']}"
             )
 
             st.write(
-                f"**Percentile in Reference Data:** "
+                f"**Reference Percentile:** "
                 f"{observation['percentile']}%"
             )
 
@@ -365,8 +509,10 @@ if start:
             with col1:
 
                 st.metric(
-                    "Reference Lower Bound",
-                    observation["reference_lower"]
+                    "Lower Reference",
+                    observation[
+                        "reference_lower"
+                    ]
                 )
 
 
@@ -374,28 +520,74 @@ if start:
 
                 st.metric(
                     "Reference Median",
-                    observation["reference_median"]
+                    observation[
+                        "reference_median"
+                    ]
                 )
 
 
             with col3:
 
                 st.metric(
-                    "Reference Upper Bound",
-                    observation["reference_upper"]
+                    "Upper Reference",
+                    observation[
+                        "reference_upper"
+                    ]
                 )
 
 
-    # ======================================================
-    # DIAGNOSTIC ASSESSMENT
-    # ======================================================
+        step_number += 1
 
-    assessment = result["assessment"]
 
+    # ======================================================
+    # AGENT DECISION TRACE
+    # ======================================================
 
     st.divider()
 
-    st.header("Diagnostic Assessment")
+    st.subheader(
+        "Agent Decision Trace"
+    )
+
+    st.caption(
+        "This section shows the agent's recorded actions "
+        "and evidence-based decisions during the "
+        "investigation."
+    )
+
+
+    reasoning_log = assessment[
+        "reasoning_log"
+    ]
+
+
+    if reasoning_log:
+
+        for number, reasoning in enumerate(
+            reasoning_log,
+            start=1
+        ):
+
+            st.write(
+                f"**{number}.** {reasoning}"
+            )
+
+    else:
+
+        st.write(
+            "No diagnostic decisions were recorded."
+        )
+
+
+    # ======================================================
+    # SENSOR EVIDENCE
+    # ======================================================
+
+    st.divider()
+
+    st.header(
+        "Diagnostic Assessment"
+    )
 
 
     abnormal = assessment[
@@ -406,41 +598,21 @@ if start:
         "within_reference"
     ]
 
-    obd_evidence = assessment[
-        "obd_evidence"
-    ]
-
-    missing = assessment[
-        "missing_information"
-    ]
-
 
     if abnormal:
 
-        st.warning(
-            "The agent identified engine measurements "
-            "outside the central reference range."
+        st.subheader(
+            "Abnormal Sensor Evidence"
         )
-
-
-        st.subheader("Abnormal Evidence")
 
 
         for evidence in abnormal:
 
-            st.write(
-                f"• **{evidence['sensor']}**: "
+            st.warning(
+                f"{evidence['sensor']}: "
                 f"{evidence['value']} — "
                 f"{evidence['status']}"
             )
-
-
-    else:
-
-        st.success(
-            "No entered engine measurements were outside "
-            "the central reference range."
-        )
 
 
     if normal:
@@ -458,105 +630,149 @@ if start:
             )
 
 
+    # ======================================================
+    # OBD EVIDENCE
+    # ======================================================
+
+    obd_evidence = assessment[
+        "obd_evidence"
+    ]
+
+
     if obd_evidence:
 
-        st.subheader("OBD-II Evidence")
+        st.subheader(
+            "OBD-II Evidence"
+        )
 
 
         for evidence in obd_evidence:
 
             st.write(
-                f"• **{evidence['code']}** — "
+                f"**{evidence['code']}** — "
                 f"{evidence['description']}"
             )
 
 
     # ======================================================
-    # MISSING INFORMATION
+    # SYMPTOM INTERPRETATION
     # ======================================================
 
-    if missing:
+    symptom_interpretation = assessment[
+        "symptom_interpretation"
+    ]
+
+
+    if symptom_interpretation:
 
         st.subheader(
-            "Additional Information That Could "
-            "Support the Investigation"
+            "Symptom Interpretation"
+        )
+
+        st.write(
+            symptom_interpretation
         )
 
 
-        for item in missing:
+    # ======================================================
+    # CANDIDATE HYPOTHESES
+    # ======================================================
+
+    hypotheses = assessment[
+        "candidate_hypotheses"
+    ]
+
+
+    if hypotheses:
+
+        st.subheader(
+            "Candidate Diagnostic Hypotheses"
+        )
+
+        st.caption(
+            "These are diagnostic possibilities suggested "
+            "by the symptom knowledge layer. They are not "
+            "confirmed mechanical failures."
+        )
+
+
+        for hypothesis in hypotheses:
 
             st.write(
-                f"• {item}"
+                f"• {hypothesis}"
             )
 
 
     # ======================================================
-    # INTERPRETATION
+    # NEXT EVIDENCE
     # ======================================================
 
-    st.divider()
+    recommended = assessment[
+        "recommended_evidence"
+    ]
 
-    st.subheader("Agent Interpretation")
+
+    missing = assessment[
+        "missing_information"
+    ]
 
 
-    if abnormal and obd_evidence:
+    if recommended or missing:
 
-        st.write(
-            "The investigation contains both abnormal "
-            "sensor evidence and OBD-II evidence. These "
-            "findings support further investigation of "
-            "the selected engine system."
+        st.subheader(
+            "Recommended Next Evidence"
         )
 
 
-    elif abnormal:
-
-        st.write(
-            "One or more engine measurements are unusual "
-            "relative to the available reference dataset. "
-            "This identifies an abnormal condition but "
-            "does not by itself establish the underlying "
-            "mechanical cause."
-        )
+        displayed = set()
 
 
-    elif obd_evidence:
+        for item in recommended:
 
-        st.write(
-            "The OBD-II code provides diagnostic evidence "
-            "relevant to the investigation. Additional "
-            "engine measurements may be needed to evaluate "
-            "the condition further."
-        )
+            if item not in displayed:
+
+                st.write(
+                    f"• {item}"
+                )
+
+                displayed.add(item)
 
 
-    else:
+        for item in missing:
 
-        st.write(
-            "The currently available evidence does not "
-            "identify a clear abnormal condition relative "
-            "to the reference dataset. Additional engine "
-            "information may be required."
-        )
+            if item not in displayed:
 
+                st.write(
+                    f"• {item}"
+                )
+
+                displayed.add(item)
+
+
+    # ======================================================
+    # RESEARCH LIMITATION
+    # ======================================================
 
     st.info(
-        "The reference dataset is used for comparative "
-        "analysis and does not represent the specific "
-        "vehicle being diagnosed. Results should therefore "
-        "be interpreted as diagnostic evidence rather than "
-        "a confirmed mechanical failure."
+        "Sensor assessments compare the entered case with "
+        "the engine reference dataset. OBD-II descriptions "
+        "come from the OBD-II reference dataset. Candidate "
+        "diagnostic hypotheses come from the separate "
+        "diagnostic knowledge layer and should not be "
+        "interpreted as confirmed failures."
     )
 
 
 # ==========================================================
-# RESEARCH DATA
+# REFERENCE DATA INFORMATION
 # ==========================================================
 
 st.divider()
 
 
-with st.expander("Reference Data Information"):
+with st.expander(
+    "Reference Data Information"
+):
 
     col1, col2 = st.columns(2)
 
@@ -575,10 +791,3 @@ with st.expander("Reference Data Information"):
             "OBD-II Reference Codes",
             len(obd_data)
         )
-
-
-    st.caption(
-        "Engine measurements entered above represent the "
-        "specific diagnostic case. The uploaded datasets "
-        "are used as reference information by the agent."
-    )
