@@ -20,6 +20,175 @@ st.set_page_config(
     layout="wide"
 )
 
+# ==========================================================
+# VISUAL DESIGN
+# ==========================================================
+
+st.markdown(
+    """
+    <style>
+    /* Overall page */
+    .stApp {
+        background:
+            radial-gradient(circle at top right, rgba(47, 111, 163, 0.08), transparent 28rem),
+            #f6f8fb;
+    }
+
+    .block-container {
+        max-width: 1180px;
+        padding-top: 2rem;
+        padding-bottom: 4rem;
+    }
+
+    /* Typography */
+    h1 {
+        letter-spacing: -0.035em;
+        font-weight: 800 !important;
+        margin-bottom: 0.25rem !important;
+    }
+
+    h2 {
+        margin-top: 1.5rem !important;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px solid rgba(49, 51, 63, 0.14);
+        letter-spacing: -0.02em;
+    }
+
+    h3 {
+        letter-spacing: -0.015em;
+    }
+
+    /* Inputs */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="textarea"] > div {
+        border-radius: 10px !important;
+        border-color: rgba(49, 51, 63, 0.18) !important;
+        box-shadow: none !important;
+    }
+
+    div[data-baseweb="input"] > div:focus-within,
+    div[data-baseweb="textarea"] > div:focus-within {
+        border-color: rgba(47, 111, 163, 0.75) !important;
+        box-shadow: 0 0 0 1px rgba(47, 111, 163, 0.25) !important;
+    }
+
+    /* Expanders become dashboard panels */
+    details {
+        background: rgba(255,255,255,0.82);
+        border: 1px solid rgba(49, 51, 63, 0.12) !important;
+        border-radius: 14px !important;
+        box-shadow: 0 6px 22px rgba(15, 23, 42, 0.045);
+        overflow: hidden;
+    }
+
+    /* Primary action */
+    div.stButton > button[kind="primary"] {
+        min-height: 3.2rem;
+        border-radius: 12px;
+        font-size: 1.03rem;
+        font-weight: 750;
+        letter-spacing: 0.01em;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+
+    /* Status messages */
+    div[data-testid="stAlert"] {
+        border-radius: 12px;
+        border-width: 1px;
+    }
+
+    /* Metrics */
+    div[data-testid="stMetric"] {
+        background: rgba(255,255,255,0.88);
+        border: 1px solid rgba(49, 51, 63, 0.10);
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+    }
+
+    /* Radio choices */
+    div[role="radiogroup"] {
+        gap: 0.55rem;
+    }
+
+    /* Reduce excessive default whitespace */
+    hr {
+        margin-top: 1.4rem !important;
+        margin-bottom: 1.4rem !important;
+    }
+
+    /* Custom dashboard components */
+    .prototype-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.8rem 1rem;
+        margin: 0.8rem 0 1.5rem 0;
+        background: rgba(255,255,255,0.82);
+        border: 1px solid rgba(49, 51, 63, 0.10);
+        border-radius: 12px;
+    }
+
+    .prototype-label {
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.72;
+    }
+
+    .prototype-status {
+        font-size: 0.82rem;
+        font-weight: 700;
+        padding: 0.25rem 0.65rem;
+        border-radius: 999px;
+        background: rgba(47, 111, 163, 0.10);
+        border: 1px solid rgba(47, 111, 163, 0.20);
+    }
+
+    .section-kicker {
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.58;
+        margin-bottom: -0.45rem;
+    }
+
+    .flow-card {
+        padding: 0.9rem 1rem;
+        margin: 0.4rem 0 1rem 0;
+        background: rgba(255,255,255,0.84);
+        border: 1px solid rgba(49, 51, 63, 0.11);
+        border-radius: 12px;
+        box-shadow: 0 5px 18px rgba(15, 23, 42, 0.035);
+        font-weight: 650;
+        line-height: 1.75;
+    }
+
+    .evidence-note {
+        padding: 0.8rem 1rem;
+        border-left: 4px solid rgba(47, 111, 163, 0.75);
+        background: rgba(47, 111, 163, 0.055);
+        border-radius: 0 10px 10px 0;
+        margin-bottom: 1rem;
+    }
+
+    @media (max-width: 800px) {
+        .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        .prototype-bar {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # ==========================================================
 # LOAD REFERENCE DATA
@@ -165,10 +334,15 @@ st.caption(
 )
 
 
-st.write(
-    "Enter only the measurements currently available. You do not need to "
-    "fill in every field—the agent can identify additional evidence that "
-    "may help narrow the investigation."
+st.markdown(
+    """
+    <div class="evidence-note">
+        <strong>Use the evidence you have.</strong><br>
+        You do not need to fill in every measurement. The agent can identify
+        additional evidence that may help narrow the investigation.
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 col1, col2 = st.columns(2)
