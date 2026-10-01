@@ -1,123 +1,98 @@
-def compare_to_reference(
-    reference_data,
+def analyze_case_sensor(
+    data,
     column,
     actual_value,
     tool_name
 ):
-    values = reference_data[column].dropna()
 
+    values = data[column].dropna()
+
+    # Reference statistics
     mean = values.mean()
     median = values.median()
+    minimum = values.min()
+    maximum = values.max()
+    standard_deviation = values.std()
 
+    # Use the central 90% of the reference
+    # dataset as the comparative reference range.
+    lower_bound = values.quantile(0.05)
+    upper_bound = values.quantile(0.95)
+
+    # Determine where the actual case value
+    # falls within the reference dataset.
     percentile = (
-        (values <= actual_value).sum()
-        / len(values)
-    ) * 100
+        (values <= actual_value).mean()
+        * 100
+    )
 
-    lower_reference = values.quantile(0.05)
-    upper_reference = values.quantile(0.95)
+    # Classify the case measurement.
+    if actual_value < lower_bound:
 
-    if actual_value < lower_reference:
         status = "Unusually Low"
 
-    elif actual_value > upper_reference:
+    elif actual_value > upper_bound:
+
         status = "Unusually High"
 
     else:
+
         status = "Within Reference Range"
+
 
     return {
         "tool": tool_name,
         "sensor": column,
-        "actual_value": round(actual_value, 2),
+        "actual_value": round(
+            actual_value,
+            2
+        ),
         "status": status,
-        "percentile": round(percentile, 1),
-        "reference_mean": round(mean, 2),
-        "reference_median": round(median, 2),
-        "reference_lower": round(lower_reference, 2),
-        "reference_upper": round(upper_reference, 2),
-        "reference_records": len(values)
+        "percentile": round(
+            percentile,
+            1
+        ),
+        "records_analyzed": len(values),
+        "reference_mean": round(
+            mean,
+            2
+        ),
+        "reference_median": round(
+            median,
+            2
+        ),
+        "reference_minimum": round(
+            minimum,
+            2
+        ),
+        "reference_maximum": round(
+            maximum,
+            2
+        ),
+        "reference_lower": round(
+            lower_bound,
+            2
+        ),
+        "reference_upper": round(
+            upper_bound,
+            2
+        ),
+        "standard_deviation": round(
+            standard_deviation,
+            2
+        )
     }
 
 
-def analyze_rpm(reference_data, actual_value):
-
-    return compare_to_reference(
-        reference_data,
-        "Engine rpm",
-        actual_value,
-        "RPM Analysis"
-    )
-
-
-def analyze_coolant_temperature(
-    reference_data,
-    actual_value
+def lookup_obd_code(
+    code,
+    obd_data
 ):
 
-    return compare_to_reference(
-        reference_data,
-        "Coolant temp",
-        actual_value,
-        "Coolant Temperature Analysis"
-    )
+    code = str(
+        code
+    ).upper().strip()
 
-
-def analyze_coolant_pressure(
-    reference_data,
-    actual_value
-):
-
-    return compare_to_reference(
-        reference_data,
-        "Coolant pressure",
-        actual_value,
-        "Coolant Pressure Analysis"
-    )
-
-
-def analyze_oil_pressure(
-    reference_data,
-    actual_value
-):
-
-    return compare_to_reference(
-        reference_data,
-        "Lub oil pressure",
-        actual_value,
-        "Lubrication Oil Pressure Analysis"
-    )
-
-
-def analyze_oil_temperature(
-    reference_data,
-    actual_value
-):
-
-    return compare_to_reference(
-        reference_data,
-        "lub oil temp",
-        actual_value,
-        "Lubrication Oil Temperature Analysis"
-    )
-
-
-def analyze_fuel_pressure(
-    reference_data,
-    actual_value
-):
-
-    return compare_to_reference(
-        reference_data,
-        "Fuel pressure",
-        actual_value,
-        "Fuel Pressure Analysis"
-    )
-
-
-def lookup_obd_code(code, obd_data):
-
-    code = str(code).upper().strip()
 
     codes = (
         obd_data["Code"]
@@ -126,7 +101,11 @@ def lookup_obd_code(code, obd_data):
         .str.strip()
     )
 
-    result = obd_data[codes == code]
+
+    result = obd_data[
+        codes == code
+    ]
+
 
     if result.empty:
 
@@ -138,12 +117,20 @@ def lookup_obd_code(code, obd_data):
             "description": None
         }
 
+
     record = result.iloc[0]
+
 
     return {
         "tool": "OBD-II Code Lookup",
         "code": code,
         "found": True,
-        "system": record["Trouble Code System"],
-        "description": record["Condition Description"]
+        "system":
+            record[
+                "Trouble Code System"
+            ],
+        "description":
+            record[
+                "Condition Description"
+            ]
     }
