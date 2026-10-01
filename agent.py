@@ -3,6 +3,13 @@ from diagnostics import (
     lookup_obd_code
 )
 
+from diagnostic_knowledge import (
+    detect_symptoms,
+    determine_primary_system,
+    needs_smoke_location,
+    get_combined_assessment
+)
+
 
 class DiagnosticAgent:
 
@@ -12,25 +19,52 @@ class DiagnosticAgent:
         reference_data,
         case_data,
         obd_data=None,
-        obd_code=None
+        obd_code=None,
+        symptoms="",
+        smoke_location=None
     ):
 
-        self.goal = goal
+        self.original_goal = goal
         self.reference_data = reference_data
         self.case_data = case_data
         self.obd_data = obd_data
         self.obd_code = obd_code
+        self.symptom_text = symptoms
+        self.smoke_location = smoke_location
+
+        self.detected_symptoms = detect_symptoms(
+            symptoms
+        )
+
+        # Symptoms can determine the diagnostic
+        # direction automatically.
+        if self.detected_symptoms:
+
+            self.goal = determine_primary_system(
+                self.detected_symptoms
+            )
+
+        else:
+
+            self.goal = goal
 
         self.state = {
-            "goal": goal,
+            "goal": self.goal,
+            "original_goal": goal,
+            "detected_symptoms":
+                self.detected_symptoms,
             "actions_taken": [],
             "observations": [],
-            "status": "investigating",
-            "current_action": None,
             "abnormal_sensors": [],
             "normal_sensors": [],
             "missing_sensors": [],
-            "reasoning_log": []
+            "reasoning_log": [],
+            "candidate_hypotheses": [],
+            "recommended_evidence": [],
+            "symptom_interpretation": None,
+            "needs_context": False,
+            "context_question": None,
+            "status": "investigating"
         }
 
 
@@ -41,6 +75,7 @@ class DiagnosticAgent:
     def sensor_configuration(self):
 
         return {
+
             "rpm": {
                 "case_key": "rpm",
                 "column": "Engine rpm",
@@ -48,44 +83,61 @@ class DiagnosticAgent:
             },
 
             "coolant_temperature": {
-                "case_key": "coolant_temperature",
-                "column": "Coolant temp",
-                "tool_name": "Coolant Temperature Analysis"
+                "case_key":
+                    "coolant_temperature",
+                "column":
+                    "Coolant temp",
+                "tool_name":
+                    "Coolant Temperature Analysis"
             },
 
             "coolant_pressure": {
-                "case_key": "coolant_pressure",
-                "column": "Coolant pressure",
-                "tool_name": "Coolant Pressure Analysis"
+                "case_key":
+                    "coolant_pressure",
+                "column":
+                    "Coolant pressure",
+                "tool_name":
+                    "Coolant Pressure Analysis"
             },
 
             "oil_pressure": {
-                "case_key": "oil_pressure",
-                "column": "Lub oil pressure",
-                "tool_name": "Lubrication Oil Pressure Analysis"
+                "case_key":
+                    "oil_pressure",
+                "column":
+                    "Lub oil pressure",
+                "tool_name":
+                    "Lubrication Oil Pressure Analysis"
             },
 
             "oil_temperature": {
-                "case_key": "oil_temperature",
-                "column": "lub oil temp",
-                "tool_name": "Lubrication Oil Temperature Analysis"
+                "case_key":
+                    "oil_temperature",
+                "column":
+                    "lub oil temp",
+                "tool_name":
+                    "Lubrication Oil Temperature Analysis"
             },
 
             "fuel_pressure": {
-                "case_key": "fuel_pressure",
-                "column": "Fuel pressure",
-                "tool_name": "Fuel Pressure Analysis"
+                "case_key":
+                    "fuel_pressure",
+                "column":
+                    "Fuel pressure",
+                "tool_name":
+                    "Fuel Pressure Analysis"
             }
         }
 
 
     # ======================================================
-    # CHECK WHETHER DATA EXISTS
+    # AVAILABLE DATA
     # ======================================================
 
     def measurement_available(self, action):
 
-        config = self.sensor_configuration()[action]
+        config = self.sensor_configuration()[
+            action
+        ]
 
         value = self.case_data.get(
             config["case_key"]
@@ -95,14 +147,107 @@ class DiagnosticAgent:
 
 
     # ======================================================
-    # INITIAL ACTION
+    # SYMPTOM ANALYSIS
+    # ======================================================
+
+    def analyze_symptoms(self):
+
+        if not self.detected_symptoms:
+
+            self.state["reasoning_log"].append(
+                "No recognized diagnostic symptoms were "
+                "identified in the symptom description."
+            )
+
+            return
+
+
+        self.state["reasoning_log"].append(
+            "Detected symptoms: "
+            + ", ".join(self.detected_symptoms)
+        )
+
+
+        if "overheating" in self.detected_symptoms:
+
+            self.state["reasoning_log"].append(
+                "Overheating was detected. The agent "
+                "prioritized a cooling-system investigation."
+            )
+
+
+        if needs_smoke_location(
+            self.detected_symptoms
+        ):
+
+            if not self.smoke_location:
+
+                self.state["needs_context"] = True
+
+                self.state["context_question"] = (
+                    "Where is the white smoke coming from?"
+                )
+
+                self.state["reasoning_log"].append(
+                    "White smoke was reported, but its "
+                    "location is unknown. Smoke location "
+                    "is needed because exhaust smoke and "
+                    "engine-bay vapor support different "
+                    "diagnostic directions."
+                )
+
+            else:
+
+                self.state["reasoning_log"].append(
+                    "White smoke location provided: "
+                    f"{self.smoke_location}."
+                )
+
+
+        combined = get_combined_assessment(
+            self.detected_symptoms,
+            self.smoke_location
+        )
+
+
+        if combined:
+
+            self.state[
+                "candidate_hypotheses"
+            ] = combined[
+                "hypotheses"
+            ]
+
+            self.state[
+                "recommended_evidence"
+            ] = combined[
+                "recommended_evidence"
+            ]
+
+            self.state[
+                "symptom_interpretation"
+            ] = combined[
+                "interpretation"
+            ]
+
+            self.state["reasoning_log"].append(
+                "The symptom combination produced "
+                "candidate diagnostic hypotheses. "
+                "These hypotheses require additional "
+                "evidence before a mechanical cause "
+                "can be established."
+            )
+
+
+    # ======================================================
+    # CHOOSE FIRST ACTION
     # ======================================================
 
     def choose_initial_action(self):
 
         if self.goal == "cooling_condition":
 
-            preferred_actions = [
+            priority = [
                 "coolant_temperature",
                 "coolant_pressure",
                 "rpm"
@@ -110,7 +255,7 @@ class DiagnosticAgent:
 
         elif self.goal == "lubrication_condition":
 
-            preferred_actions = [
+            priority = [
                 "oil_pressure",
                 "oil_temperature",
                 "rpm"
@@ -118,77 +263,88 @@ class DiagnosticAgent:
 
         elif self.goal == "fuel_condition":
 
-            preferred_actions = [
+            priority = [
                 "fuel_pressure",
                 "rpm"
             ]
 
         else:
 
-            preferred_actions = [
+            priority = [
                 "coolant_temperature",
                 "oil_pressure",
                 "fuel_pressure",
-                "rpm",
                 "coolant_pressure",
-                "oil_temperature"
+                "oil_temperature",
+                "rpm"
             ]
 
 
-        for action in preferred_actions:
+        for action in priority:
 
             if (
                 self.measurement_available(action)
                 and
-                action not in self.state["actions_taken"]
+                action
+                not in self.state["actions_taken"]
             ):
 
                 self.state["reasoning_log"].append(
-                    f"Selected {action} as the initial "
-                    f"measurement for the diagnostic goal."
+                    f"Selected {action} as the next "
+                    f"available measurement relevant "
+                    f"to the diagnostic goal."
                 )
 
                 return action
 
 
-        return self.choose_any_available_sensor()
+        return "stop"
 
 
     # ======================================================
-    # EVIDENCE-DRIVEN NEXT ACTION
+    # CHOOSE NEXT ACTION
     # ======================================================
 
     def choose_next_action(self):
 
-        observations = self.state[
-            "observations"
-        ]
+        if not self.state["observations"]:
+
+            return self.choose_initial_action()
+
 
         actions_taken = self.state[
             "actions_taken"
         ]
 
+        last = self.state[
+            "observations"
+        ][-1]
 
-        if not observations:
 
-            return self.choose_initial_action()
+        # Ignore OBD observation when selecting
+        # another sensor action.
+        if (
+            last.get("tool")
+            == "OBD-II Code Lookup"
+        ):
+
+            return "stop"
 
 
-        last_observation = observations[-1]
+        sensor = last.get("sensor")
+        status = last.get("status")
 
 
         # --------------------------------------------------
-        # COOLING SYSTEM REASONING
+        # COOLING INVESTIGATION
         # --------------------------------------------------
 
         if self.goal == "cooling_condition":
 
             if (
-                last_observation.get("sensor")
-                == "Coolant temp"
+                sensor == "Coolant temp"
                 and
-                last_observation.get("status")
-                == "Unusually High"
+                status == "Unusually High"
             ):
 
                 if (
@@ -204,22 +360,18 @@ class DiagnosticAgent:
                         "reasoning_log"
                     ].append(
                         "Coolant temperature was unusually "
-                        "high. The agent selected coolant "
-                        "pressure as the next measurement "
-                        "to determine whether another "
-                        "cooling-system abnormality is "
-                        "present."
+                        "high. Coolant pressure was selected "
+                        "next to gather related cooling-"
+                        "system evidence."
                     )
 
                     return "coolant_pressure"
 
 
             if (
-                last_observation.get("sensor")
-                == "Coolant pressure"
+                sensor == "Coolant pressure"
                 and
-                last_observation.get("status")
-                in [
+                status in [
                     "Unusually Low",
                     "Unusually High"
                 ]
@@ -228,23 +380,22 @@ class DiagnosticAgent:
                 if (
                     self.measurement_available("rpm")
                     and
-                    "rpm" not in actions_taken
+                    "rpm"
+                    not in actions_taken
                 ):
 
                     self.state[
                         "reasoning_log"
                     ].append(
                         "Abnormal coolant pressure was "
-                        "identified. The agent selected "
-                        "engine RPM to examine the operating "
-                        "condition associated with the "
-                        "cooling-system evidence."
+                        "identified. Engine RPM was selected "
+                        "to add operating-condition context."
                     )
 
                     return "rpm"
 
 
-            return self.choose_from_priority(
+            return self.next_available(
                 [
                     "coolant_temperature",
                     "coolant_pressure",
@@ -254,17 +405,15 @@ class DiagnosticAgent:
 
 
         # --------------------------------------------------
-        # LUBRICATION SYSTEM REASONING
+        # LUBRICATION INVESTIGATION
         # --------------------------------------------------
 
-        elif self.goal == "lubrication_condition":
+        if self.goal == "lubrication_condition":
 
             if (
-                last_observation.get("sensor")
-                == "Lub oil pressure"
+                sensor == "Lub oil pressure"
                 and
-                last_observation.get("status")
-                in [
+                status in [
                     "Unusually Low",
                     "Unusually High"
                 ]
@@ -282,45 +431,15 @@ class DiagnosticAgent:
                     self.state[
                         "reasoning_log"
                     ].append(
-                        "Abnormal lubrication oil pressure "
-                        "was identified. The agent selected "
-                        "oil temperature to gather related "
-                        "lubrication-system evidence."
+                        "Abnormal oil pressure was found. "
+                        "Oil temperature was selected as "
+                        "related lubrication evidence."
                     )
 
                     return "oil_temperature"
 
 
-            if (
-                last_observation.get("sensor")
-                == "lub oil temp"
-                and
-                last_observation.get("status")
-                in [
-                    "Unusually Low",
-                    "Unusually High"
-                ]
-            ):
-
-                if (
-                    self.measurement_available("rpm")
-                    and
-                    "rpm" not in actions_taken
-                ):
-
-                    self.state[
-                        "reasoning_log"
-                    ].append(
-                        "Abnormal oil temperature was "
-                        "identified. The agent selected "
-                        "engine RPM to evaluate the "
-                        "associated operating condition."
-                    )
-
-                    return "rpm"
-
-
-            return self.choose_from_priority(
+            return self.next_available(
                 [
                     "oil_pressure",
                     "oil_temperature",
@@ -330,17 +449,15 @@ class DiagnosticAgent:
 
 
         # --------------------------------------------------
-        # FUEL SYSTEM REASONING
+        # FUEL INVESTIGATION
         # --------------------------------------------------
 
-        elif self.goal == "fuel_condition":
+        if self.goal == "fuel_condition":
 
             if (
-                last_observation.get("sensor")
-                == "Fuel pressure"
+                sensor == "Fuel pressure"
                 and
-                last_observation.get("status")
-                in [
+                status in [
                     "Unusually Low",
                     "Unusually High"
                 ]
@@ -349,22 +466,22 @@ class DiagnosticAgent:
                 if (
                     self.measurement_available("rpm")
                     and
-                    "rpm" not in actions_taken
+                    "rpm"
+                    not in actions_taken
                 ):
 
                     self.state[
                         "reasoning_log"
                     ].append(
-                        "Abnormal fuel pressure was "
-                        "identified. The agent selected "
-                        "engine RPM as additional operating "
-                        "evidence."
+                        "Abnormal fuel pressure was found. "
+                        "Engine RPM was selected as "
+                        "additional operating evidence."
                     )
 
                     return "rpm"
 
 
-            return self.choose_from_priority(
+            return self.next_available(
                 [
                     "fuel_pressure",
                     "rpm"
@@ -373,147 +490,27 @@ class DiagnosticAgent:
 
 
         # --------------------------------------------------
-        # GENERAL ENGINE REASONING
+        # GENERAL INVESTIGATION
         # --------------------------------------------------
 
-        else:
-
-            # If an abnormal sensor has been found,
-            # investigate related evidence first.
-
-            abnormal = self.state[
-                "abnormal_sensors"
-            ]
-
-
-            if "coolant_temperature" in abnormal:
-
-                action = self.first_available(
-                    [
-                        "coolant_pressure",
-                        "rpm"
-                    ]
-                )
-
-                if action:
-
-                    self.state[
-                        "reasoning_log"
-                    ].append(
-                        "Abnormal coolant temperature "
-                        "shifted the investigation toward "
-                        "additional cooling-system evidence."
-                    )
-
-                    return action
-
-
-            if "coolant_pressure" in abnormal:
-
-                action = self.first_available(
-                    [
-                        "coolant_temperature",
-                        "rpm"
-                    ]
-                )
-
-                if action:
-
-                    return action
-
-
-            if "oil_pressure" in abnormal:
-
-                action = self.first_available(
-                    [
-                        "oil_temperature",
-                        "rpm"
-                    ]
-                )
-
-                if action:
-
-                    self.state[
-                        "reasoning_log"
-                    ].append(
-                        "Abnormal oil pressure shifted the "
-                        "investigation toward additional "
-                        "lubrication-system evidence."
-                    )
-
-                    return action
-
-
-            if "oil_temperature" in abnormal:
-
-                action = self.first_available(
-                    [
-                        "oil_pressure",
-                        "rpm"
-                    ]
-                )
-
-                if action:
-
-                    return action
-
-
-            if "fuel_pressure" in abnormal:
-
-                action = self.first_available(
-                    [
-                        "rpm"
-                    ]
-                )
-
-                if action:
-
-                    return action
-
-
-            return self.choose_any_available_sensor()
+        return self.next_available(
+            list(
+                self.sensor_configuration().keys()
+            )
+        )
 
 
     # ======================================================
-    # PRIORITY HELPERS
+    # NEXT AVAILABLE MEASUREMENT
     # ======================================================
 
-    def choose_from_priority(self, actions):
+    def next_available(self, actions):
 
         for action in actions:
 
             if (
-                action not in self.state["actions_taken"]
-                and
-                self.measurement_available(action)
-            ):
-
-                return action
-
-        return self.choose_any_available_sensor()
-
-
-    def first_available(self, actions):
-
-        for action in actions:
-
-            if (
-                action not in self.state["actions_taken"]
-                and
-                self.measurement_available(action)
-            ):
-
-                return action
-
-        return None
-
-
-    def choose_any_available_sensor(self):
-
-        for action in self.sensor_configuration():
-
-            if (
-                action not in self.state["actions_taken"]
+                action
+                not in self.state["actions_taken"]
                 and
                 self.measurement_available(action)
             ):
@@ -524,7 +521,7 @@ class DiagnosticAgent:
 
 
     # ======================================================
-    # EXECUTE SENSOR ACTION
+    # EXECUTE ACTION
     # ======================================================
 
     def execute_action(self, action):
@@ -546,7 +543,7 @@ class DiagnosticAgent:
 
 
     # ======================================================
-    # UPDATE AGENT STATE
+    # UPDATE STATE
     # ======================================================
 
     def update_state(
@@ -563,17 +560,10 @@ class DiagnosticAgent:
             "observations"
         ].append(observation)
 
-        self.state[
-            "current_action"
-        ] = action
 
-
-        status = observation.get(
+        if observation[
             "status"
-        )
-
-
-        if status in [
+        ] in [
             "Unusually Low",
             "Unusually High"
         ]:
@@ -590,7 +580,60 @@ class DiagnosticAgent:
 
 
     # ======================================================
-    # IDENTIFY MISSING INFORMATION
+    # OBD-II INVESTIGATION
+    # ======================================================
+
+    def investigate_obd(self):
+
+        if (
+            not self.obd_code
+            or
+            self.obd_data is None
+        ):
+
+            return
+
+
+        result = lookup_obd_code(
+            self.obd_code,
+            self.obd_data
+        )
+
+
+        self.state[
+            "actions_taken"
+        ].append(
+            "obd_lookup"
+        )
+
+        self.state[
+            "observations"
+        ].append(
+            result
+        )
+
+
+        if result["found"]:
+
+            self.state[
+                "reasoning_log"
+            ].append(
+                f"OBD-II code {result['code']} was "
+                "found and added to the evidence."
+            )
+
+        else:
+
+            self.state[
+                "reasoning_log"
+            ].append(
+                f"OBD-II code {result['code']} was "
+                "not found in the reference dataset."
+            )
+
+
+    # ======================================================
+    # MISSING INFORMATION
     # ======================================================
 
     def identify_missing_information(self):
@@ -634,12 +677,10 @@ class DiagnosticAgent:
                 action
             ):
 
-                config = self.sensor_configuration()[
-                    action
-                ]
-
                 missing.append(
-                    config["column"]
+                    self.sensor_configuration()[
+                        action
+                    ]["column"]
                 )
 
 
@@ -649,66 +690,13 @@ class DiagnosticAgent:
 
 
     # ======================================================
-    # OBD-II EVIDENCE
-    # ======================================================
-
-    def investigate_obd(self):
-
-        if (
-            not self.obd_code
-            or
-            self.obd_data is None
-        ):
-
-            return
-
-
-        result = lookup_obd_code(
-            self.obd_code,
-            self.obd_data
-        )
-
-
-        self.state[
-            "actions_taken"
-        ].append(
-            "obd_lookup"
-        )
-
-        self.state[
-            "observations"
-        ].append(
-            result
-        )
-
-
-        if result["found"]:
-
-            self.state[
-                "reasoning_log"
-            ].append(
-                f"OBD-II code {result['code']} was "
-                f"found and added as diagnostic evidence."
-            )
-
-        else:
-
-            self.state[
-                "reasoning_log"
-            ].append(
-                f"OBD-II code {result['code']} was not "
-                f"found in the available reference data."
-            )
-
-
-    # ======================================================
-    # BUILD FINAL ASSESSMENT
+    # FINAL ASSESSMENT
     # ======================================================
 
     def build_assessment(self):
 
-        abnormal_evidence = []
-        within_reference = []
+        abnormal = []
+        normal = []
         obd_evidence = []
 
 
@@ -727,10 +715,8 @@ class DiagnosticAgent:
                         {
                             "code":
                                 observation["code"],
-
                             "system":
                                 observation["system"],
-
                             "description":
                                 observation[
                                     "description"
@@ -744,15 +730,12 @@ class DiagnosticAgent:
             evidence = {
                 "sensor":
                     observation["sensor"],
-
                 "value":
                     observation[
                         "actual_value"
                     ],
-
                 "status":
                     observation["status"],
-
                 "percentile":
                     observation[
                         "percentile"
@@ -765,30 +748,58 @@ class DiagnosticAgent:
                 "Unusually High"
             ]:
 
-                abnormal_evidence.append(
+                abnormal.append(
                     evidence
                 )
 
             else:
 
-                within_reference.append(
+                normal.append(
                     evidence
                 )
 
 
         return {
+            "detected_symptoms":
+                self.detected_symptoms,
+
             "abnormal_evidence":
-                abnormal_evidence,
+                abnormal,
 
             "within_reference":
-                within_reference,
+                normal,
 
             "obd_evidence":
                 obd_evidence,
 
+            "candidate_hypotheses":
+                self.state[
+                    "candidate_hypotheses"
+                ],
+
+            "recommended_evidence":
+                self.state[
+                    "recommended_evidence"
+                ],
+
+            "symptom_interpretation":
+                self.state[
+                    "symptom_interpretation"
+                ],
+
             "missing_information":
                 self.state[
                     "missing_sensors"
+                ],
+
+            "needs_context":
+                self.state[
+                    "needs_context"
+                ],
+
+            "context_question":
+                self.state[
+                    "context_question"
                 ],
 
             "reasoning_log":
@@ -799,14 +810,20 @@ class DiagnosticAgent:
 
 
     # ======================================================
-    # MAIN AGENT LOOP
+    # MAIN INVESTIGATION
     # ======================================================
 
     def investigate(self):
 
+        # First interpret the reported symptoms.
+        self.analyze_symptoms()
+
+        # Determine which useful measurements
+        # have not been supplied.
         self.identify_missing_information()
 
 
+        # Investigate available sensor evidence.
         while (
             self.state["status"]
             == "investigating"
@@ -835,9 +852,7 @@ class DiagnosticAgent:
             )
 
 
-        # OBD evidence is investigated after the
-        # sensor investigation.
-
+        # Add OBD-II evidence if available.
         self.investigate_obd()
 
 
