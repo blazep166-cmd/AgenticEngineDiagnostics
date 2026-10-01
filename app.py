@@ -1,119 +1,95 @@
+import streamlit as st
+
+from data_loader import (
+    load_engine_data,
+    load_obd_data,
+    get_sensor_data
+)
+
+from agent import DiagnosticAgent
+
+from diagnostic_knowledge import (
+    detect_symptoms,
+    get_context_question
+)
 
 
-    # ======================================================
-    # CANDIDATE HYPOTHESES
-    # ======================================================
-
-    hypotheses = assessment[
-        "candidate_hypotheses"
-    ]
+st.set_page_config(
+    page_title="Engine Diagnostic Agent",
+    page_icon="🔧",
+    layout="wide"
+)
 
 
-    if hypotheses:
+# ==========================================================
+# LOAD REFERENCE DATA
+# ==========================================================
 
-        st.subheader(
-            "Candidate Diagnostic Hypotheses"
-        )
+@st.cache_data
+def load_project_data():
 
-        st.caption(
-            "These are diagnostic possibilities suggested "
-            "by the symptom knowledge layer. They are not "
-            "confirmed mechanical failures."
-        )
-
-
-        for hypothesis in hypotheses:
-
-            st.write(
-                f"• {hypothesis}"
-            )
-
-
-    # ======================================================
-    # NEXT EVIDENCE
-    # ======================================================
-
-    recommended = assessment[
-        "recommended_evidence"
-    ]
-
-
-    missing = assessment[
-        "missing_information"
-    ]
-
-
-    if recommended or missing:
-
-        st.subheader(
-            "Recommended Next Evidence"
-        )
-
-
-        displayed = set()
-
-
-        for item in recommended:
-
-            if item not in displayed:
-
-                st.write(
-                    f"• {item}"
-                )
-
-                displayed.add(item)
-
-
-        for item in missing:
-
-            if item not in displayed:
-
-                st.write(
-                    f"• {item}"
-                )
-
-                displayed.add(item)
-
-
-    # ======================================================
-    # RESEARCH LIMITATION
-    # ======================================================
-
-    st.info(
-        "Sensor assessments compare the entered case with "
-        "the engine reference dataset. OBD-II descriptions "
-        "come from the OBD-II reference dataset. Candidate "
-        "diagnostic hypotheses come from the separate "
-        "diagnostic knowledge layer and should not be "
-        "interpreted as confirmed failures."
+    engine_data = load_engine_data(
+        "engine_data.csv"
     )
 
+    obd_data = load_obd_data(
+        "Powertrain Codes.csv"
+    )
+
+    sensor_data = get_sensor_data(
+        engine_data
+    )
+
+    return engine_data, obd_data, sensor_data
+
+
+
+engine_data, obd_data, sensor_data = load_project_data()
+
+
+SENSOR_UNITS = {
+    "Engine rpm": "rpm",
+    "Coolant temp": "°C",
+    "Coolant pressure": "bar",
+    "Lub oil pressure": "bar",
+    "lub oil temp": "°C",
+    "Fuel pressure": "bar"
+}
+
+
+def format_sensor_value(sensor, value):
+    unit = SENSOR_UNITS.get(sensor, "")
+    return f"{value} {unit}".strip()
+
 
 # ==========================================================
-# REFERENCE DATA INFORMATION
+# PAGE HEADER
 # ==========================================================
+
+st.title("🔧 Engine Diagnostic Agent")
+
+st.write(
+    "Describe the engine problem and provide any available "
+    "measurements. The agent will determine a diagnostic "
+    "direction, investigate available evidence, and identify "
+    "additional information that may be needed."
+)
 
 st.divider()
 
 
-with st.expander(
-    "Reference Data Information"
-):
+# ==========================================================
+# REPORTED PROBLEM
+# ==========================================================
 
-    col1, col2 = st.columns(2)
-
-
-    with col1:
-
-        st.metric(
-            "Engine Reference Records",
-            len(engine_data)
-        )
+st.subheader("1. Describe the Engine Problem")
 
 
-    with col2:
+symptoms = st.text_area(
+    "What is happening with the engine?",
+    placeholder=(
+        "Example: My engine is overheating and "
+        "I'm seeing white smoke."
+    )
+)
 
-        st.metric(
-            "OBD-II Reference Codes",
-            len(obd_data)
-        )
