@@ -1,69 +1,116 @@
-def create_sensor_observation(data, column, tool_name):
+def compare_to_reference(
+    reference_data,
+    column,
+    actual_value,
+    tool_name
+):
+    values = reference_data[column].dropna()
 
-    values = data[column].dropna()
+    mean = values.mean()
+    median = values.median()
+
+    percentile = (
+        (values <= actual_value).sum()
+        / len(values)
+    ) * 100
+
+    lower_reference = values.quantile(0.05)
+    upper_reference = values.quantile(0.95)
+
+    if actual_value < lower_reference:
+        status = "Unusually Low"
+
+    elif actual_value > upper_reference:
+        status = "Unusually High"
+
+    else:
+        status = "Within Reference Range"
 
     return {
         "tool": tool_name,
         "sensor": column,
-        "records_analyzed": len(values),
-        "mean": round(values.mean(), 2),
-        "median": round(values.median(), 2),
-        "minimum": round(values.min(), 2),
-        "maximum": round(values.max(), 2),
-        "standard_deviation": round(values.std(), 2)
+        "actual_value": round(actual_value, 2),
+        "status": status,
+        "percentile": round(percentile, 1),
+        "reference_mean": round(mean, 2),
+        "reference_median": round(median, 2),
+        "reference_lower": round(lower_reference, 2),
+        "reference_upper": round(upper_reference, 2),
+        "reference_records": len(values)
     }
 
 
-def analyze_rpm(data):
+def analyze_rpm(reference_data, actual_value):
 
-    return create_sensor_observation(
-        data,
+    return compare_to_reference(
+        reference_data,
         "Engine rpm",
+        actual_value,
         "RPM Analysis"
     )
 
 
-def analyze_coolant_temperature(data):
+def analyze_coolant_temperature(
+    reference_data,
+    actual_value
+):
 
-    return create_sensor_observation(
-        data,
+    return compare_to_reference(
+        reference_data,
         "Coolant temp",
+        actual_value,
         "Coolant Temperature Analysis"
     )
 
 
-def analyze_coolant_pressure(data):
+def analyze_coolant_pressure(
+    reference_data,
+    actual_value
+):
 
-    return create_sensor_observation(
-        data,
+    return compare_to_reference(
+        reference_data,
         "Coolant pressure",
+        actual_value,
         "Coolant Pressure Analysis"
     )
 
 
-def analyze_oil_pressure(data):
+def analyze_oil_pressure(
+    reference_data,
+    actual_value
+):
 
-    return create_sensor_observation(
-        data,
+    return compare_to_reference(
+        reference_data,
         "Lub oil pressure",
+        actual_value,
         "Lubrication Oil Pressure Analysis"
     )
 
 
-def analyze_oil_temperature(data):
+def analyze_oil_temperature(
+    reference_data,
+    actual_value
+):
 
-    return create_sensor_observation(
-        data,
+    return compare_to_reference(
+        reference_data,
         "lub oil temp",
+        actual_value,
         "Lubrication Oil Temperature Analysis"
     )
 
 
-def analyze_fuel_pressure(data):
+def analyze_fuel_pressure(
+    reference_data,
+    actual_value
+):
 
-    return create_sensor_observation(
-        data,
+    return compare_to_reference(
+        reference_data,
         "Fuel pressure",
+        actual_value,
         "Fuel Pressure Analysis"
     )
 
